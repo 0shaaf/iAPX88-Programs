@@ -2,8 +2,9 @@
 cpu 8086
 jmp start
 
-str   : db "Hello world yuhoo!!", 0
+str   : db "Hi, This is a paragraph from gemini. There is a rare, quiet dignity in stripping a system down until nothing remains between your intent and the cold pulse of copper. Modern life runs on layers of polite illusion—glossy interfaces and forgiving compilers that quietly pardon our shortcuts and patch our oversights. But past midnight, beneath the harsh hum of a terminal, the abstractions dissolve. A processor never bargains with sentiment; it demands that every register account for its contents, every jump respect its boundary, and every cycle justify its brief existence. Working at the bedrock of logic means accepting that clarity cannot be faked. It asks you to trade the comfort of easy answers for the fierce thrill of knowing precisely how raw electricity turns into thought. When the screen finally blinks awake—not by accident, but through the patient, stubborn alignment of every single byte—the stillness feels earned. You haven't merely written code; you have coaxed order.", 0
 title : db "My Document" , 0
+search : db "minal", 0
 
 clrScr:
     push bp
@@ -46,6 +47,31 @@ strLen:
         inc cx
         jmp loopForLength
     exitLengthCount:
+
+    pop di
+    pop ax
+    pop bp
+ret 2
+
+tokenLen:
+    push bp
+    mov bp,sp
+    push ax
+    push di
+
+
+    mov di, [bp+4] ; load the string starting address
+    mov ah, 32
+    xor cx, cx
+
+    loopForToken:
+        mov byte al , [di]
+        cmp al,ah
+        jz exitTokenLoop
+        inc di
+        inc cx
+        jmp loopForToken
+    exitTokenLoop:
 
     pop di
     pop ax
@@ -184,17 +210,139 @@ printBordered:
     push ax
     push bx
     push cx
+    push dx
     push di
     push si
 
-    mov bx, 496; priniting baseline offset
     mov ax, 0xB800
     mov es,ax
-    mov di, 0
+    mov di, 660 ; starts writing from here
+    mov bx, 0   ; counts from 0 to 60
 
-    mov si, [str]
+    mov si, str
+    push si
     call strLen
-    cmp cx, 
+    cmp cx, 1037 ; max printable length
+    jbe skipClamp
+    mov cx, 1037
+    skipClamp:
+    
+mov ah, 0x07
+
+loopPrintText:
+    push cx             ; save cx
+    push si             ; param for tokenLen
+    call tokenLen       ; get token length in cx
+
+    ; Test if this word will go out of bounds and wrap around
+    mov dx, bx
+    add dx, cx
+    cmp dx, 61
+    jbe printNormal 
+    ; Word doesnt fit
+    mov dx, 61
+    sub dx, bx          ; DX = remaining columns to reach column 61
+    shl dx, 1           ; convert column to actual bytes
+    add dx, 38          ; Add outer border gap to start of next line
+    add di, dx         ;DI  now lands at Column 10 of the next row
+    mov bx, 0            ;Reset column counter
+
+    printNormal:
+    lodsb               ; load character
+    stosw               ;[ES:DI] = character + attribute
+    inc bx              ; increment column count
+
+    ; if a single word is > 61 check
+    cmp bx, 61
+    jb skipHardWrap
+    add di, 38
+    mov bx, 0
+    skipHardWrap:
+    pop cx              ; revive cx to continue looping
+    cmp di,3376         ; hard check on di
+    ja endPrint
+    loop loopPrintText
+    endPrint:
+
+    pop si
+    pop di
+    pop dx
+    pop cx
+    pop bx
+    pop ax
+    pop bp
+
+ret
+     
+window_scroll_up:
+    push bp
+    mov bp,sp
+    push ax
+    push bx
+    push cx
+    push di
+    push si
+    push ds
+
+    mov ax, 0xB800
+    mov es,ax
+    mov ds,ax
+    mov ax, [bp+12]; load top
+    mov bl, 160;
+    mul bl
+    mov di, ax
+    mov ax, [bp+8] ; load left
+    shl ax, 1
+    add di,ax
+    add di, 160 ; move to next line
+    add di, 4  ; inner margins
+   
+    mov ax, [bp+10] ; load bottom
+    mul bl
+    sub ax, 4
+    mov cx, ax
+
+    mov ax, [bp+4] ; load N
+    mov bl, 160
+    mul bl
+    mov si, di
+    add si, ax
+    mov bl, 0   ; counts from 0 to 60
+
+
+    mov ah, 0x07
+    loopScroll:
+    cmp si, cx
+    jae quitLoopScroll
+    movsw
+    inc bl
+    cmp bl, 61
+    jnz skipScrRowShift
+    add di, 38 ; 2 inner right cols + 8 outer right cols + 8 outer left on down row + 2 inner left on down row
+    add si, 38
+    mov bl, 0
+    skipScrRowShift:
+    jmp loopScroll
+    quitLoopScroll:
+
+    mov bl, 0
+    cleanUpLoop:
+    cmp di, cx
+    jae quitCleanUp
+    cmp bl,61
+    jnz skipCleanUpRowShift
+    mov bl, 0
+    add di, 38
+    cmp di, cx
+    jae quitCleanUp
+    skipCleanUpRowShift:
+    mov word [es:di], 0x0720
+    add di, 2
+    inc bl
+    jmp cleanUpLoop
+    quitCleanUp:
+
+    pop ds
     pop si
     pop di
     pop cx
@@ -202,22 +350,116 @@ printBordered:
     pop ax
     pop bp
 
-ret 8
-     
+ret 10
+
+matchStrings:
+    push bp
+    mov bp,sp
+    push ax
+    push cx
+    push si
+    push di
+    
+    mov ax,0xB800
+    mov es, ax
+    mov di,[bp+4]  ; load position from where to start checking
+    mov si, [bp+6] ; load starting address of search string
+    push si
+    call strLen
+
+    mov ah, 0x07
+    mov bx, 1      ; Return Value, 1 By Default
+    matchLoop:
+    lodsb ; load char of string 
+    scasw ; compares it with current memory column
+    jz equal
+    mov cx, 1 ; Break Loop If not equal
+    mov bx, 0 ; Set the return Value to 0
+    equal:
+    loop matchLoop
+
+    cmp bx,0
+    jz skipHighlight
+    mov ax,[bp+8]   ; load attribute byte into AX
+    mov si, [bp+6]  ; starting position of search
+    mov di, [bp+4]  ; starting position of display memory read 
+    push si
+    call strLen
+    itrHighlight:
+        mov al, [es:di] ; move the character from display memory, attribute already loaded in ah
+        stosw           ; store the char with the new attribute
+    loop itrHighlight   ; iterate until String length
+
+    skipHighlight:
+    pop di
+    pop si
+    pop cx
+    pop ax
+    pop bp
+ret 6
+
+find_and_highlight:
+    push bp
+    mov bp,sp
+    sub sp, 2 ; Local Variable for Number of Matches
+    push ax
+    push bx
+    push cx
+    push di
+    push si
+
+    mov cx, [bp+4] ; load attribute
+    mov si, [bp+6] ; load starting address 
+    mov ax, 0xB800
+    mov es, ax
+    mov di, 660    ; starting of the text
+
+    mov word [bp-2], 0
+    traverseMemory:
+    push cx
+    push si
+    push di
+    call matchStrings
+    cmp bx, 0
+    jz notFound
+    inc word [bp-2]
+    notFound:
+    add di, 2
+    cmp di, 3376
+    jb traverseMemory
+    
+    pop si
+    pop di
+    pop cx
+    pop bx
+    pop ax
+    add sp, 2
+    pop bp
+
+ret 4
+
 start:
     call clrScr
-    mov [es:3396], ax
-    mov ax, str
-    push ax    ; address [bp+10]
-    mov ax, 4  ; row [bp+8]
-    push ax
-    mov ax, 10 ; column [bp+6]
-    push ax
-    mov ax, 8  ; How many Characters to print [bp+4]
-    push ax    ; 
-    call printUntil
-
     call drawBorder
+    call printBordered
 
-    mov ax ,0x4c00
+    ;mov ax, 3 ; top                         [bp+12]
+    ;push ax 
+    ;mov ax,21 ; bott                        [bp+10]
+    ;push ax
+    ;mov ax,8 ; left                         [bp+8]
+    ;push ax
+    ;mov ax, 72; right                       [bp+6]
+    ;push ax
+    ;mov ax, 1 ; n number of lines to scroll [bp+4]
+    ;push ax
+    ;call window_scroll_up
+
+    mov ax, search
+    push ax         ; pass the string 
+    mov ax, 0xCE00
+    push ax         ; pass the attribute
+    call find_and_highlight
+
+    mov ax, 0x4c00
     int 21h
