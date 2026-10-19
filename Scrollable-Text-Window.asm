@@ -275,7 +275,7 @@ printBordered:
 
 ret
      
-window_scroll_up:
+scroll_window_up:
     push bp
     mov bp,sp
     push ax
@@ -489,7 +489,7 @@ start:
     push ax
     mov ax, 5 ; n number of lines to scroll [bp+4]
     push ax
-    call window_scroll_up
+    call scroll_window_up
 
     mov ax, search
     push ax         ; pass the string 
