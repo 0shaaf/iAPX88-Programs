@@ -2,9 +2,10 @@
 cpu 8086
 jmp start
 
-str   : db "Hi, This is a paragraph from gemini. There is a rare, quiet dignity in stripping a system down until nothing remains between your intent and the cold pulse of copper. Modern life runs on layers of polite illusion—glossy interfaces and forgiving compilers that quietly pardon our shortcuts and patch our oversights. But past midnight, beneath the harsh hum of a terminal, the abstractions dissolve. A processor never bargains with sentiment; it demands that every register account for its contents, every jump respect its boundary, and every cycle justify its brief existence. Working at the bedrock of logic means accepting that clarity cannot be faked. It asks you to trade the comfort of easy answers for the fierce thrill of knowing precisely how raw electricity turns into thought. When the screen finally blinks awake—not by accident, but through the patient, stubborn alignment of every single byte—the stillness feels earned. You haven't merely written code; you have coaxed order.", 0
+str   : db "Hi, There is a rare, quiet dignity in stripping a system down until nothing remains between your intent and the cold pulse of copper. Modern life runs on layers of polite illusion—glossy interfaces and forgiving compilers that quietly pardon our shortcuts and patch our oversights. But past midnight, beneath the harsh hum of a terminal, the abstractions dissolve. A processor never bargains with sentiment; it demands that every register account for its contents, every jump respect its boundary, and every cycle justify its brief existence. Working at the bedrock of logic means accepting that clarity cannot be faked. It asks you to trade the comfort of easy answers for the fierce thrill of knowing precisely how raw electricity turns into thought. When the screen finally blinks awake—not by accident, but through the patient, stubborn alignment of every single byte—the stillness feels earned. You haven't merely written code; you have coaxed order.", 0
 title : db "My Document" , 0
-search : db "minal", 0
+search : db "a", 0
+statusBar : db "Total Matches Found :          | Viewport Status : ACTIVE", 0
 
 clrScr:
     push bp
@@ -227,9 +228,9 @@ printBordered:
     mov cx, 1037
     skipClamp:
     
-mov ah, 0x07
+    mov ah, 0x07
 
-loopPrintText:
+    loopPrintText:
     push cx             ; save cx
     push si             ; param for tokenLen
     call tokenLen       ; get token length in cx
@@ -427,7 +428,42 @@ find_and_highlight:
     add di, 2
     cmp di, 3376
     jb traverseMemory
+
+    mov di, statusBar
+    push di ; push address
+    call strLen
     
+    ; Pushing params for print until
+    mov di, statusBar
+    push di ; push address
+    mov di, 23
+    push di ; push row
+    mov di, 10
+    push di ; push column
+    push cx
+    call printUntil
+
+    mov di, 3750 ; where column is to be printed
+    printCounter:
+    mov ax, [bp-2]
+    mov bl, 10
+    div bl
+    cmp al, 0
+    jz quitPrint
+    mov bh, 00000110b
+    mov bl, ah
+    add bl, 48
+    mov [es:di], bx
+    sub di, 2
+    xor ah, ah
+    mov [bp-2], ax
+    jmp printCounter
+    quitPrint:
+    mov bh, 00000110b
+    mov bl, ah
+    add bl, 48
+    mov [es:di], bx
+
     pop si
     pop di
     pop cx
@@ -443,17 +479,17 @@ start:
     call drawBorder
     call printBordered
 
-    ;mov ax, 3 ; top                         [bp+12]
-    ;push ax 
-    ;mov ax,21 ; bott                        [bp+10]
-    ;push ax
-    ;mov ax,8 ; left                         [bp+8]
-    ;push ax
-    ;mov ax, 72; right                       [bp+6]
-    ;push ax
-    ;mov ax, 1 ; n number of lines to scroll [bp+4]
-    ;push ax
-    ;call window_scroll_up
+    mov ax, 3 ; top                         [bp+12]
+    push ax 
+    mov ax,21 ; bott                        [bp+10]
+    push ax
+    mov ax,8 ; left                         [bp+8]
+    push ax
+    mov ax, 72; right                       [bp+6]
+    push ax
+    mov ax, 5 ; n number of lines to scroll [bp+4]
+    push ax
+    call window_scroll_up
 
     mov ax, search
     push ax         ; pass the string 
